@@ -421,6 +421,40 @@ void processDeclDimList(AST_NODE* idNode, TypeDescriptor* typeDescriptor, int ig
 }
 
 
-void declareFunction(AST_NODE* declarationNode)
+void declareFunction(AST_NODE* returnTypeNode)
+{
+    AST_NODE* idNode = returnTypeNode->rightSibling;
+    AST_NODE* paramListNode = idNode->rightSibling;
+    AST_NODE* blockNode = paramListNode->rightSibling;
+    DATA_TYPE returnType = processTypeNode(returnTypeNode);
+    SymbolAttribute* attr = createAttrFunc(FUNCTION_SIGNATURE, returnType);
+    SymbolTableEntry* ptr = retrieveSymbol(idName(idNode));
+    if (ptr) { // TODO: msg
+        idNode->linenumber = returnTypeNode->linenumber;
+        printErrorMsg(idNode, SYMBOL_REDECLARE);
+        idNode->semantic_value.identifierSemanticValue.symbolTableEntry = ptr;
+    } else {
+        idNode->semantic_value.identifierSemanticValue.symbolTableEntry = enterSymbol(idName(idNode), attr);
+    }
+    openScope();
+    dfs(paramListNode);
+    Parameter* last = NULL;
+    for (AST_NODE* i = paramListNode->child; i; i = i->rightSibling) { // TODO: delete Parameter list
+        Parameter* cur = (Parameter*)malloc(sizeof(Parameter));
+        cur->type = retrieveSymbol(idName(i->child->rightSibling))->attribute->attr.typeDescriptor;
+        cur->parameterName = strdup(idName(i->child->rightSibling));
+        attr->attr.functionSignature->parametersCount++;
+        cur->next = NULL;
+        if (last)
+            last->next = cur;
+        else
+            attr->attr.functionSignature->parameterList = cur;
+        last = cur;
+    }
+    dfs(blockNode);
+    closeScope();
+}
+
+void checkIdentifierNode(AST_NODE* idNode)
 {
 }
