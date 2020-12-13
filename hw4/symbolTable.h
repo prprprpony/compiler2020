@@ -89,7 +89,6 @@ typedef struct SymbolTable
     SymbolTableEntry* hashTable[HASH_TABLE_SIZE];
     SymbolTableEntry** scopeDisplay;
     int currentLevel;
-    int scopeDisplayElementCount;
     int scopeDisplayCapacity;
 } SymbolTable;
 

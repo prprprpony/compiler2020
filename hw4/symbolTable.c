@@ -42,6 +42,12 @@ void initializeSymbolTable()
     symbolTable.scopeDisplay = (SymbolTableEntry**)malloc(sizeof(SymbolTableEntry*));
     symbolTable.scopeDisplay[0] = NULL;
     symbolTable.scopeDisplayCapacity = 1;
+    enterSymbol("int", createAttrType(TYPE_ATTRIBUTE, SCALAR_TYPE_DESCRIPTOR, INT_TYPE));
+    enterSymbol("float", createAttrType(TYPE_ATTRIBUTE, SCALAR_TYPE_DESCRIPTOR, FLOAT_TYPE));
+    enterSymbol("void", createAttrType(TYPE_ATTRIBUTE, SCALAR_TYPE_DESCRIPTOR, VOID_TYPE));
+    enterSymbol("read", createAttrFunc(FUNCTION_SIGNATURE, INT_TYPE));
+    enterSymbol("fread", createAttrFunc(FUNCTION_SIGNATURE, FLOAT_TYPE));
+    enterSymbol("write", createAttrFunc(FUNCTION_SIGNATURE, VOID_TYPE));
 }
 
 void symbolTableEnd()
