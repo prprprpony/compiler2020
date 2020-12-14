@@ -6,6 +6,7 @@ int f(int x)
 {
     return x;
 }
+float h(){return 2;}
 int x[2][2];
 int main()
 {

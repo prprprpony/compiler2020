@@ -50,6 +50,7 @@ typedef enum ErrorMsgKind
 {
     SYMBOL_IS_NOT_TYPE,
     SYMBOL_REDECLARE,
+    SYMBOL_REDECLARE_TYPEDEF,
     SYMBOL_UNDECLARED,
     NOT_FUNCTION_NAME,
     TRY_TO_INIT_ARRAY,
@@ -82,6 +83,9 @@ void printErrorMsgSpecial(AST_NODE* node1, char* name2, ErrorMsgKind errorMsgKin
     case SYMBOL_REDECLARE:
         printf("redeclaration of ‘%s %s’\n", name2, idName(node1));
         break;
+    case SYMBOL_REDECLARE_TYPEDEF:
+        printf("conflicting types for ‘%s’\n", idName(node1));
+        break;
     case INCOMPATIBLE_ARRAY_DIMENSION:
         if (strcmp(name2, ">") == 0)
             printf("subscripted value is neither array nor pointer nor vector\n");
@@ -108,6 +112,11 @@ void printErrorMsgSpecial(AST_NODE* node1, char* name2, ErrorMsgKind errorMsgKin
 
 void printErrorMsg(AST_NODE* node, ErrorMsgKind errorMsgKind)
 {
+    if (errorMsgKind == RETURN_TYPE_UNMATCH) { //not required?
+        printf("Warning: in line %d\n", node->linenumber);
+        printf("return type unmatch\n"); 
+        return;
+    }
     g_anyErrorOccur = 1;
     printf("Error found in line %d\n", node->linenumber);
     switch (errorMsgKind) {
@@ -146,9 +155,6 @@ void printErrorMsg(AST_NODE* node, ErrorMsgKind errorMsgKind)
         break;
     case TOO_MANY_ARGUMENTS:
         printf("too many arguments to function ‘%s’\n", idName(node));
-        break;
-    case RETURN_TYPE_UNMATCH: //not required?
-        printf("return type unmatch\n"); 
         break;
     case NOT_ASSIGNABLE: //not required
         printf("%s not assignable\n", idName(node));
@@ -320,24 +326,24 @@ void declareIdList(AST_NODE* typeNode, SymbolAttributeKind isVariableOrTypeAttri
         SymbolTableEntry* ptr = retrieveSymbol(idName(idList));
         if (ptr && ptr->nestingLevel == symbolTable.currentLevel) {
             if (ptr->attribute->attr.typeDescriptor->kind == SCALAR_TYPE_DESCRIPTOR)
-                printErrorMsgSpecial(idList, dataTypeName(ptr->attribute->attr.typeDescriptor->properties.dataType), SYMBOL_REDECLARE);
+                printErrorMsgSpecial(idList, dataTypeName(ptr->attribute->attr.typeDescriptor->properties.dataType), isVariableOrTypeAttribute == TYPE_ATTRIBUTE ? SYMBOL_REDECLARE_TYPEDEF : SYMBOL_REDECLARE);
             else
-                printErrorMsgSpecial(idList, dataTypeName(ptr->attribute->attr.typeDescriptor->properties.arrayProperties.elementType), SYMBOL_REDECLARE);
+                printErrorMsgSpecial(idList, dataTypeName(ptr->attribute->attr.typeDescriptor->properties.arrayProperties.elementType), isVariableOrTypeAttribute == TYPE_ATTRIBUTE ? SYMBOL_REDECLARE_TYPEDEF : SYMBOL_REDECLARE);
             idList->semantic_value.identifierSemanticValue.symbolTableEntry = ptr;
             continue;
         }
         switch (idList->semantic_value.identifierSemanticValue.kind) {
-            case ARRAY_ID:
-                attr = createAttrType(isVariableOrTypeAttribute, ARRAY_TYPE_DESCRIPTOR, type);
-                processDeclDimList(idList, attr->attr.typeDescriptor, ignoreArrayFirstDimSize);
-                break;
-            case NORMAL_ID:
-                attr = createAttrType(isVariableOrTypeAttribute, SCALAR_TYPE_DESCRIPTOR, type);
-                break;
-            case WITH_INIT_ID: //?
-                attr = createAttrType(isVariableOrTypeAttribute, SCALAR_TYPE_DESCRIPTOR, type);
-                dfs(idList);
-                break;
+        case ARRAY_ID:
+            attr = createAttrType(isVariableOrTypeAttribute, ARRAY_TYPE_DESCRIPTOR, type);
+            processDeclDimList(idList, attr->attr.typeDescriptor, ignoreArrayFirstDimSize);
+            break;
+        case NORMAL_ID:
+            attr = createAttrType(isVariableOrTypeAttribute, SCALAR_TYPE_DESCRIPTOR, type);
+            break;
+        case WITH_INIT_ID: //?
+            attr = createAttrType(isVariableOrTypeAttribute, SCALAR_TYPE_DESCRIPTOR, type);
+            dfs(idList);
+            break;
         }
         idList->semantic_value.identifierSemanticValue.symbolTableEntry = enterSymbol(idName(idList), attr);
     }
