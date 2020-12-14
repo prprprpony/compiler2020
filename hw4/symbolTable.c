@@ -184,7 +184,6 @@ void deleteAttr(SymbolAttribute* attr)
         ptr = attr->attr.functionSignature->parameterList;
         for (; ptr; ptr = next) {
             next = ptr->next;
-            free(ptr->type);
             free(ptr->parameterName);
             free(ptr);
         }
