@@ -11,6 +11,19 @@ int g_cnt;
 int g_regx[32];
 int g_regf[32];
 
+const char *g_regx_name[32] = {
+    "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+    "fp", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+    "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+    "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
+};
+const char *g_regf_name[32] = {
+    "ft0", "ft1", "ft2", "ft3", "ft4", "ft5", "ft6", "ft7",
+    "fs0", "fs1", "fa0", "fa1", "fa2", "fa3", "fa4", "fa5",
+    "fa6", "fa7", "fs2", "fs3", "fs4", "fs5", "fs6", "fs7",
+    "fs8", "fs9", "fs10", "fs11", "ft8", "ft9", "ft10", "ft11"
+};
+
 typedef struct Reg
 {
     DATA_TYPE type; // int of float
@@ -159,7 +172,9 @@ void generateIntData(Reg reg, int value)
     fprintf(g_output, "_int_const_%d: .word %d\n", g_cnt, value);
     generateAlignment();
     fprintf(g_output, ".text\n");
-    fprintf(g_output, "lw x%d,_int_const_%d\n", reg.i, g_cnt++);
+    fprintf(g_output, "la x%d,_int_const_%d\n", reg.i, g_cnt);
+    fprintf(g_output, "lw x%d,0(x%d)\n", reg.i, reg.i);
+    g_cnt++;
 }
 
 
@@ -171,7 +186,8 @@ void generateFloatData(Reg reg, float value) //TODO how to use flw QAQ??
     generateAlignment();
     fprintf(g_output, ".text\n");
     Reg tmp = getIntReg();
-    fprintf(g_output, "lw x%d,_float_const_%d\n", tmp.i, g_cnt);
+    fprintf(g_output, "la x%d,_float_const_%d\n", tmp.i, g_cnt);
+    fprintf(g_output, "lw x%d,0(x%d)\n", tmp.i, tmp.i);
     fprintf(g_output, "fcvt.s.w f%d,x%d\n", reg.i, tmp.i); // int to float
     freeReg(tmp);
     ++g_cnt;
@@ -284,7 +300,7 @@ Reg generateVarValue(AST_NODE *idNode)
 {
     Reg reg = generateVarAddress(idNode);
     if (idNode->dataType == INT_TYPE) {
-        fprintf(g_output, "lw x%d,x%d\n", reg.i, reg.i);
+        fprintf(g_output, "lw x%d,0(x%d)\n", reg.i, reg.i);
     } else if (idNode->dataType == FLOAT_TYPE) {
         Reg reg2 = getFloatReg();
         fprintf(g_output, "flw f%d,0(x%d)\n", reg2.i, reg.i);
