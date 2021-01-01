@@ -656,6 +656,7 @@ void generateIfStmt(AST_NODE *ifNode)
     fprintf(g_output, "_if_%d:\n", cnt);
     Reg reg = generateExprTest(testNode);
     fprintf(g_output, "beqz x%d,_else_%d\n", reg.i, cnt);
+    freeReg(reg);
     generateStmt(stmtNode);
     fprintf(g_output, "j _end_if_%d\n", cnt);
     fprintf(g_output, "_else_%d:\n", cnt);
