@@ -188,7 +188,7 @@ void generateFloatData(Reg reg, float value) //TODO how to use flw QAQ??
     Reg tmp = getIntReg();
     fprintf(g_output, "la x%d,_float_const_%d\n", tmp.i, g_cnt);
     fprintf(g_output, "lw x%d,0(x%d)\n", tmp.i, tmp.i);
-    fprintf(g_output, "fcvt.s.w f%d,x%d\n", reg.i, tmp.i); // int to float
+    fprintf(g_output, "fmv.s.x f%d,x%d\n", reg.i, tmp.i); // int to float
     freeReg(tmp);
     ++g_cnt;
 }
