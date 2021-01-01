@@ -416,20 +416,20 @@ Reg generateExpr(AST_NODE *exprNode)
         AST_NODE *left = exprNode->child;
         AST_NODE *right = left->rightSibling;
         exprNode->dataType = (left->dataType == FLOAT_TYPE || right->dataType == FLOAT_TYPE) ? FLOAT_TYPE : INT_TYPE;
-        Reg reg = generateExprGeneral(left);
+        reg1 = generateExprGeneral(left);
         int offset = push(4);
-        if (reg.type == INT_TYPE)
-            fprintf(g_output, "sw x%d,%d(sp)\n", reg.i, offset);
+        if (reg1.type == INT_TYPE)
+            fprintf(g_output, "sw x%d,%d(sp)\n", reg1.i, offset);
         else
-            fprintf(g_output, "fsw f%d,%d(sp)\n", reg.i, offset);
-        freeReg(reg);
+            fprintf(g_output, "fsw f%d,%d(sp)\n", reg1.i, offset);
+        freeReg(reg1);
         reg2 = generateExprGeneral(right);
         if (left->dataType == INT_TYPE) {
             reg1 = getIntReg();
-            fprintf(g_output, "lw x%d,%d(sp)\n", reg.i, offset);
+            fprintf(g_output, "lw x%d,%d(sp)\n", reg1.i, offset);
         } else {
             reg1 = getFloatReg();
-            fprintf(g_output, "flw f%d,%d(sp)\n", reg.i, offset);
+            fprintf(g_output, "flw f%d,%d(sp)\n", reg1.i, offset);
         }
         pop(4);
         if (left->dataType == INT_TYPE && right->dataType == INT_TYPE) {
