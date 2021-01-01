@@ -97,6 +97,7 @@ typedef enum AST_TYPE
 typedef struct STMTSemanticValue
 {
     STMT_KIND kind;
+    char *returnFunctionName;
 } STMTSemanticValue;
 
 typedef struct EXPRSemanticValue

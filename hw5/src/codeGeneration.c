@@ -32,6 +32,8 @@ void generateStrData(Reg reg, char *value);
 void generateHead(char *name);
 void generatePrologue(char *name);
 void generateEpilogue(char *name);
+Reg generateVarAddress(AST_NODE *idNode);
+Reg generateVarValue(AST_NODE *idNode);
 
 void generateProgram(AST_NODE *root);
 void generateGlobalVarDecl(AST_NODE *varDeclListNode);
@@ -161,14 +163,18 @@ void generateIntData(Reg reg, int value)
 }
 
 
-void generateFloatData(Reg reg, float value)
+void generateFloatData(Reg reg, float value) //TODO how to use flw QAQ??
 {
     assert(reg.type == FLOAT_TYPE);
     fprintf(g_output, ".data\n");
     fprintf(g_output, "_float_const_%d: .word %d\n", g_cnt, *(int *)&value);
     generateAlignment();
     fprintf(g_output, ".text\n");
-    fprintf(g_output, "flw f%d,_float_const_%d\n", reg.i, g_cnt++);
+    Reg tmp = getIntReg();
+    fprintf(g_output, "lw x%d,_float_const_%d\n", tmp.i, g_cnt);
+    fprintf(g_output, "fcvt.s.w f%d,x%d\n", reg.i, tmp.i); // int to float
+    freeReg(tmp);
+    ++g_cnt;
 }
 
 
@@ -176,7 +182,20 @@ void generateStrData(Reg reg, char *value)
 {
     assert(reg.type == INT_TYPE);
     fprintf(g_output, ".data\n");
-    fprintf(g_output, "_str_const_%d: .ascii \"%s\\000\"\n", g_cnt, value);
+    //fprintf(g_output, "_str_const_%d: .ascii \"%s\\000\"\n", g_cnt, value);
+    static char buf[99999];
+    int len = sprintf(buf, "%s", value);
+    //printf(buf, "wtf:%s\n", value);
+    buf[len - 1] = '\\';
+    buf[len++] = '0';
+    buf[len++] = '0';
+    buf[len++] = '0';
+    buf[len++] = '"';
+    buf[len] = 0;
+    fprintf(g_output, "_str_const_%d: .ascii ", g_cnt);
+    for (int i = 0; i < len; ++i)
+        fputc(buf[i], g_output);
+    fputc('\n', g_output);
     generateAlignment();
     fprintf(g_output, ".text\n");
     fprintf(g_output, "la x%d,_str_const_%d\n", reg.i, g_cnt++);
@@ -261,106 +280,107 @@ void generateBlock(AST_NODE *blockNode)
 }
 
 
+Reg generateVarValue(AST_NODE *idNode)
+{
+    Reg reg = generateVarAddress(idNode);
+    if (idNode->dataType == INT_TYPE) {
+        fprintf(g_output, "lw x%d,x%d\n", reg.i, reg.i);
+    } else if (idNode->dataType == FLOAT_TYPE) {
+        Reg reg2 = getFloatReg();
+        fprintf(g_output, "flw f%d,0(x%d)\n", reg2.i, reg.i);
+        freeReg(reg);
+        reg = reg2;
+    } else { // pointer
+    }
+    return reg;
+}
+
+
+Reg generateVarAddress(AST_NODE *idNode)
+{
+    Reg reg = getIntReg(), reg2;
+    SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+    if (idNode->semantic_value.identifierSemanticValue.kind == NORMAL_ID) {
+        idNode->dataType = entry->attribute->attr.typeDescriptor->properties.dataType;
+        if (entry->nestingLevel == 0) { // global variable
+            fprintf(g_output, "la x%d,_g_%s\n", reg.i, idNode->semantic_value.identifierSemanticValue.identifierName);
+        } else {
+            fprintf(g_output, "addi x%d,sp,%d\n", reg.i, entry->offset);
+        }
+    } else { // array access
+        ArrayProperties AP = entry->attribute->attr.typeDescriptor->properties.arrayProperties;
+        idNode->dataType = AP.elementType;
+        int i = 0;
+        fprintf(g_output, "add x%d,x0,x0\n", reg.i);
+        for (AST_NODE *dimListNode = idNode->child; dimListNode; dimListNode = dimListNode->rightSibling, ++i) {
+            if (i) {
+                reg2 = getIntReg();
+                generateDwordData(reg2, AP.sizeInEachDimension[i]);
+                fprintf(g_output, "mul x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
+                freeReg(reg2);
+            }
+            reg2 = generateExprGeneral(dimListNode);
+            fprintf(g_output, "add x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
+            freeReg(reg2);
+        }
+        int old_i = i;
+        size_t size = 4;
+        for (; i < AP.dimension; ++i)
+            if (i)
+                size *= AP.sizeInEachDimension[i];
+        if (old_i != i) 
+            idNode->dataType = idNode->dataType == INT_TYPE ? INT_PTR_TYPE : FLOAT_PTR_TYPE;
+        reg2 = getIntReg();
+        generateDwordData(reg2, size);
+        fprintf(g_output, "mul x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
+        if (entry->nestingLevel == 0)
+            fprintf(g_output, "la x%d,_g_%s\n", reg2.i, idNode->semantic_value.identifierSemanticValue.identifierName);
+        else
+            fprintf(g_output, "addi x%d,sp,%d\n", reg2.i, entry->offset);
+        fprintf(g_output, "add x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
+        freeReg(reg2);
+    }
+    return reg;
+}
+
+
 Reg generateExprGeneral(AST_NODE *exprNode)
 {
     Reg reg, reg2;
-    SymbolTableEntry *entry;
-    ArrayProperties AP;
-    int i, old_i;
-    size_t size;
     switch (exprNode->nodeType) {
-        case EXPR_NODE:
-            return generateExpr(exprNode);
-        case STMT_NODE: // function call
-            generateFunctionCall(exprNode);
-            if (exprNode->dataType == INT_TYPE) {
+    case EXPR_NODE:
+        return generateExpr(exprNode);
+    case STMT_NODE: // function call
+        generateFunctionCall(exprNode);
+        if (exprNode->dataType == INT_TYPE) {
+            reg = getIntReg();
+            fprintf(g_output, "mv x%d,a0\n", reg.i);
+        } else {
+            reg = getFloatReg();
+            fprintf(g_output, "fmv.s f%d,fa0\n", reg.i);
+        }
+        break;
+    case IDENTIFIER_NODE:
+        return generateVarValue(exprNode);
+    case CONST_VALUE_NODE:
+        switch (exprNode->semantic_value.const1->const_type) {
+            case INTEGERC:
+                exprNode->dataType = INT_TYPE;
                 reg = getIntReg();
-                fprintf(g_output, "mv x%d,a0\n", reg.i);
-            } else {
+                generateIntData(reg, exprNode->semantic_value.const1->const_u.intval);
+                break;
+            case FLOATC:
+                exprNode->dataType = FLOAT_TYPE;
                 reg = getFloatReg();
-                fprintf(g_output, "fmv.s f%d,a0\n", reg.i);
-            }
-            break;
-        case IDENTIFIER_NODE:
-            entry = exprNode->semantic_value.identifierSemanticValue.symbolTableEntry;
-            if (exprNode->semantic_value.identifierSemanticValue.kind == NORMAL_ID) {
-                exprNode->dataType = entry->attribute->attr.typeDescriptor->properties.dataType;
-                reg = exprNode->dataType == INT_TYPE ? getIntReg() : getFloatReg();
-                if (entry->nestingLevel == 0) { // global variable
-                    if (reg.type == INT_TYPE)
-                        fprintf(g_output, "lw x%d,_g_%s\n", reg.i, exprNode->semantic_value.identifierSemanticValue.identifierName);
-                    else
-                        fprintf(g_output, "flw f%d,_g_%s\n", reg.i, exprNode->semantic_value.identifierSemanticValue.identifierName);
-                } else {
-                    if (reg.type == INT_TYPE)
-                        fprintf(g_output, "lw x%d,%d(sp)\n", reg.i, entry->offset);
-                    else
-                        fprintf(g_output, "flw f%d,%d(sp)\n", reg.i, entry->offset);
-                }
-            } else { // array access
-                AP = entry->attribute->attr.typeDescriptor->properties.arrayProperties;
-                exprNode->dataType = AP.elementType;
-                i = 0;
+                generateFloatData(reg, exprNode->semantic_value.const1->const_u.fval);
+                break;
+            case STRINGC:
+                exprNode->dataType = CONST_STRING_TYPE;
                 reg = getIntReg();
-                fprintf(g_output, "add x%d,x0,x0\n", reg.i);
-                for (AST_NODE *dimListNode = exprNode->child; dimListNode; dimListNode = dimListNode->rightSibling, ++i) {
-                    if (i) {
-                        reg2 = getIntReg();
-                        generateDwordData(reg2, AP.sizeInEachDimension[i]);
-                        fprintf(g_output, "mul x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
-                        freeReg(reg2);
-                    }
-                    reg2 = generateExprGeneral(dimListNode);
-                    fprintf(g_output, "add x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
-                    freeReg(reg2);
-                }
-                old_i = i;
-                size = 4;
-                for (; i < AP.dimension; ++i)
-                    if (i)
-                        size *= AP.sizeInEachDimension[i];
-                if (old_i != i) 
-                    exprNode->dataType = exprNode->dataType == INT_TYPE ? INT_PTR_TYPE : FLOAT_PTR_TYPE;
-                reg2 = getIntReg();
-                generateDwordData(reg2, size);
-                fprintf(g_output, "mul x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
-                if (entry->nestingLevel == 0)
-                    fprintf(g_output, "la x%d,_g_%s\n", reg2.i, exprNode->semantic_value.identifierSemanticValue.identifierName);
-                else
-                    fprintf(g_output, "addi x%d,sp,%d\n", reg2.i, entry->offset);
-                fprintf(g_output, "add x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
-                freeReg(reg2);
-                // now reg store the address
-                if (exprNode->dataType == INT_TYPE) {
-                    fprintf(g_output, "lw x%d,x%d\n", reg.i, reg.i);
-                } else if (exprNode->dataType == FLOAT_TYPE) {
-                    reg2 = getFloatReg();
-                    fprintf(g_output, "flw f%d,x%d\n", reg2.i, reg.i);
-                    freeReg(reg);
-                    reg = reg2;
-                } else { // pointer
-                }
-            }
-            break;
-        case CONST_VALUE_NODE:
-            switch (exprNode->semantic_value.const1->const_type) {
-                case INTEGERC:
-                    exprNode->dataType = INT_TYPE;
-                    reg = getIntReg();
-                    generateIntData(reg, exprNode->semantic_value.const1->const_u.intval);
-                    break;
-                case FLOATC:
-                    exprNode->dataType = FLOAT_TYPE;
-                    reg = getFloatReg();
-                    generateFloatData(reg, exprNode->semantic_value.const1->const_u.fval);
-                    break;
-                case STRINGC:
-                    exprNode->dataType = CONST_STRING_TYPE;
-                    reg = getIntReg();
-                    generateStrData(reg, exprNode->semantic_value.const1->const_u.sc);
-                    break;
-            }
-            break;
+                generateStrData(reg, exprNode->semantic_value.const1->const_u.sc);
+                break;
+        }
+        break;
     }
     return reg;
 }
@@ -580,10 +600,37 @@ void generateForStmt(AST_NODE *forNode)//TODO
 
 void generateAssignStmt(AST_NODE *assignNode)
 {
+    AST_NODE *idNode = assignNode->child;
+    AST_NODE *expr = idNode->rightSibling;
+    Reg rvalue = generateExprGeneral(expr);
+    Reg lvalue = generateVarAddress(idNode);
+    if (idNode->dataType == INT_TYPE) {
+        fprintf(g_output, "sw x%d,0(x%d)\n", rvalue.i, lvalue.i);
+    } else if (idNode->dataType = FLOAT_TYPE) {
+        fprintf(g_output, "fsw f%d,0(x%d)\n", rvalue.i, lvalue.i);
+    } else {
+        exitError("assignment to a pointer rvalue");
+    }
+    freeReg(rvalue);
+    freeReg(lvalue);
 }
 
 
-void generateIfStmt(AST_NODE *ifNode);
+void generateIfStmt(AST_NODE *ifNode)
+{
+    AST_NODE *testNode = ifNode->child;
+    AST_NODE *stmtNode = testNode->rightSibling;
+    AST_NODE *elseNode = stmtNode->rightSibling;
+    int cnt = g_cnt++;
+    fprintf(g_output, "_if_%d:\n", cnt);
+    Reg reg = generateExprTest(testNode);
+    fprintf(g_output, "beqz x%d,_else_%d\n", reg.i, cnt);
+    generateStmt(stmtNode);
+    fprintf(g_output, "j _end_if_%d\n", cnt);
+    fprintf(g_output, "_else_%d:\n", cnt);
+    generateStmt(elseNode);
+    fprintf(g_output, "_end_if_%d:\n", cnt);
+}
 
 
 void generateWrite(AST_NODE *node)
@@ -594,7 +641,7 @@ void generateWrite(AST_NODE *node)
         fprintf(g_output, "mv a0,x%d\n", reg.i);
         fprintf(g_output, "jal _write_int\n");
     } else if (paramNode->dataType == FLOAT_TYPE) {
-        fprintf(g_output, "mv a0,f%d\n", reg.i);
+        fprintf(g_output, "fmv.s fa0,f%d\n", reg.i);
         fprintf(g_output, "jal _write_float\n");
     } else if (paramNode->dataType == CONST_STRING_TYPE) {
         fprintf(g_output, "mv a0,x%d\n", reg.i);
@@ -622,41 +669,59 @@ void generateFunctionCall(AST_NODE *funcNode)//Parameterless procedure calls onl
 }
 
 
-void generateReturnStmt(AST_NODE *returnNode);
+void generateReturnStmt(AST_NODE *returnNode)
+{
+    if (returnNode->dataType != VOID_TYPE) {
+        Reg reg = generateExprGeneral(returnNode->child);
+        if (returnNode->dataType == INT_TYPE) {
+            if (reg.type == FLOAT_TYPE)
+                fprintf(g_output, "fcvt.w.s a0,f%d\n", reg.i);
+            else
+                fprintf(g_output, "mv a0,x%d\n", reg.i);
+        } else {
+            if (reg.type == INT_TYPE)
+                fprintf(g_output, "fcvt.s.w fa0,x%d\n", reg.i);
+            else
+                fprintf(g_output, "fmv fa0,f%d\n", reg.i);
+        }
+        freeReg(reg);
+    }
+    fprintf(g_output, "j, _end_%s\n", returnNode->semantic_value.stmtSemanticValue.returnFunctionName);
+}
 
 
 void generateStmt(AST_NODE *stmtNode)
 {
     switch (stmtNode->nodeType) {
-        case NUL_NODE:
-            return;
-        case BLOCK_NODE:
-            generateBlock(stmtNode);
-            return;
-        case STMT_NODE:
-            switch (stmtNode->semantic_value.stmtSemanticValue.kind) {
-                case WHILE_STMT:
-                    generateWhileStmt(stmtNode);
-                    break;
-                case FOR_STMT:
-                    generateForStmt(stmtNode);
-                    break;
-                case ASSIGN_STMT:
-                    generateAssignStmt(stmtNode);
-                    break;
-                case IF_STMT:
-                    generateIfStmt(stmtNode);
-                    break;
-                case FUNCTION_CALL_STMT:
-                    generateFunctionCall(stmtNode);
-                    break;
-                case RETURN_STMT:
-                    generateReturnStmt(stmtNode);
-                    break;
-            }
-            return;
-        default:
-            exitError("generateStmt(): stmtNode is not stmt");
+    case NUL_NODE:
+        return;
+    case BLOCK_NODE:
+        generateBlock(stmtNode);
+        return;
+    case STMT_NODE:
+        switch (stmtNode->semantic_value.stmtSemanticValue.kind) {
+        case WHILE_STMT:
+            generateWhileStmt(stmtNode);
+            break;
+        case FOR_STMT:
+            generateForStmt(stmtNode);
+            break;
+        case ASSIGN_STMT:
+            generateAssignStmt(stmtNode);
+            break;
+        case IF_STMT:
+            generateIfStmt(stmtNode);
+            break;
+        case FUNCTION_CALL_STMT:
+            generateFunctionCall(stmtNode);
+            break;
+        case RETURN_STMT:
+            generateReturnStmt(stmtNode);
+            break;
+        }
+        return;
+    default:
+        exitError("generateStmt(): stmtNode is not stmt");
     }
 }
 
