@@ -47,6 +47,8 @@ void generatePrologue(char *name);
 void generateEpilogue(char *name);
 Reg generateVarAddress(AST_NODE *idNode);
 Reg generateVarValue(AST_NODE *idNode);
+void generateAddi(Reg rd, const char *rs1, int imm);
+void generateStoreLoad(const char *ins, Reg rd, const char *rs1, int imm);
 
 void generateProgram(AST_NODE *root);
 void generateGlobalVarDecl(AST_NODE *varDeclListNode);
@@ -321,7 +323,7 @@ Reg generateVarAddress(AST_NODE *idNode)
         if (entry->nestingLevel == 0) { // global variable
             fprintf(g_output, "la x%d,_g_%s\n", reg.i, idNode->semantic_value.identifierSemanticValue.identifierName);
         } else {
-            fprintf(g_output, "addi x%d,sp,%d\n", reg.i, entry->offset);
+            generateAddi(reg, "sp", entry->offset);
         }
     } else { // array access
         ArrayProperties AP = entry->attribute->attr.typeDescriptor->properties.arrayProperties;
@@ -352,11 +354,38 @@ Reg generateVarAddress(AST_NODE *idNode)
         if (entry->nestingLevel == 0)
             fprintf(g_output, "la x%d,_g_%s\n", reg2.i, idNode->semantic_value.identifierSemanticValue.identifierName);
         else
-            fprintf(g_output, "addi x%d,sp,%d\n", reg2.i, entry->offset);
+            generateAddi(reg2, "sp", entry->offset);
         fprintf(g_output, "add x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
         freeReg(reg2);
     }
     return reg;
+}
+
+
+void generateAddi(Reg rd, const char *rs1, int imm)
+{
+    if (abs(imm) < 2048) {
+        fprintf(g_output, "addi x%d,%s,%d\n", rd.i, rs1, imm);
+    } else {
+        Reg immReg = getIntReg();
+        generateIntData(immReg, imm);
+        fprintf(g_output, "add x%d,%s,x%d\n", rd.i, rs1, immReg.i);
+        freeReg(immReg);
+    }
+}
+
+
+void generateStoreLoad(const char *ins, Reg rd, const char *rs1, int imm)
+{
+    if (abs(imm) < 2048) {
+        fprintf(g_output, "%s %c%d,%d(%s)\n", ins, rd.type == INT_TYPE ? 'x' : 'f', rd.i, imm, rs1);
+    } else {
+        Reg immReg = getIntReg();
+        generateIntData(immReg, imm);
+        fprintf(g_output, "add x%d,x%d,%s\n", immReg.i, immReg.i, rs1);
+        fprintf(g_output, "%s %c%d,0(x%d)\n", ins, rd.type == INT_TYPE ? 'x' : 'f', rd.i, immReg.i);
+        freeReg(immReg);
+    }
 }
 
 
@@ -419,17 +448,17 @@ Reg generateExpr(AST_NODE *exprNode)
         reg1 = generateExprGeneral(left);
         int offset = push(4);
         if (reg1.type == INT_TYPE)
-            fprintf(g_output, "sw x%d,%d(sp)\n", reg1.i, offset);
+            generateStoreLoad("sw", reg1, "sp", offset);
         else
-            fprintf(g_output, "fsw f%d,%d(sp)\n", reg1.i, offset);
+            generateStoreLoad("fsw", reg1, "sp", offset);
         freeReg(reg1);
         reg2 = generateExprGeneral(right);
         if (left->dataType == INT_TYPE) {
             reg1 = getIntReg();
-            fprintf(g_output, "lw x%d,%d(sp)\n", reg1.i, offset);
+            generateStoreLoad("lw", reg1, "sp", offset);
         } else {
             reg1 = getFloatReg();
-            fprintf(g_output, "flw f%d,%d(sp)\n", reg1.i, offset);
+            generateStoreLoad("flw", reg1, "sp", offset);
         }
         pop(4);
         if (left->dataType == INT_TYPE && right->dataType == INT_TYPE) {
