@@ -74,7 +74,7 @@ Reg getIntReg()
             ret.i = tid[i];
             return ret;
         }
-    for (int i = 18; i <= 27; ++i) //s2~s11
+    for (int i = 18; i <= 27; ++i) //s2~s11=x18~x27
         if (g_regx[i] == 0) {
             g_regx[i] = 1;
             ret.i = i;
@@ -402,7 +402,10 @@ Reg generateExpr(AST_NODE *exprNode)
         exprNode->dataType = (left->dataType == FLOAT_TYPE || right->dataType == FLOAT_TYPE) ? FLOAT_TYPE : INT_TYPE;
         Reg reg = generateExprGeneral(left);
         int offset = push(4);
-        fprintf(g_output, "sw %c%d,%d(sp)\n", reg.type == INT_TYPE ? 'x' : 'f', reg.i, offset);
+        if (reg.type == INT_TYPE)
+            fprintf(g_output, "sw x%d,%d(sp)\n", reg.i, offset);
+        else
+            fprintf(g_output, "fsw f%d,%d(sp)\n", reg.i, offset);
         freeReg(reg);
         reg2 = generateExprGeneral(right);
         if (left->dataType == INT_TYPE) {
@@ -686,7 +689,7 @@ void generateReturnStmt(AST_NODE *returnNode)
         }
         freeReg(reg);
     }
-    fprintf(g_output, "j, _end_%s\n", returnNode->semantic_value.stmtSemanticValue.returnFunctionName);
+    fprintf(g_output, "j _end_%s\n", returnNode->semantic_value.stmtSemanticValue.returnFunctionName);
 }
 
 

@@ -1159,7 +1159,7 @@ void checkReturnStmt(AST_NODE* returnNode)
         }
         parentNode = parentNode->parent;
     }
-    returnNode->semantic_value.stmtSemanticValue.returnFunctionName = parentNode->semantic_value.identifierSemanticValue.identifierName;
+    returnNode->semantic_value.stmtSemanticValue.returnFunctionName = parentNode->child->rightSibling->semantic_value.identifierSemanticValue.identifierName;
 
     int errorOccur = 0;
     if(returnNode->child->nodeType == NUL_NODE)
