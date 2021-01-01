@@ -713,7 +713,7 @@ void generateReturnStmt(AST_NODE *returnNode)
             if (reg.type == INT_TYPE)
                 fprintf(g_output, "fcvt.s.w fa0,x%d\n", reg.i);
             else
-                fprintf(g_output, "fmv fa0,f%d\n", reg.i);
+                fprintf(g_output, "fmv.s fa0,f%d\n", reg.i);
         }
         freeReg(reg);
     }
