@@ -495,22 +495,22 @@ Reg generateExpr(AST_NODE *exprNode)
                 reg2 = reg;
             }
             int arithmetic = 1;
-            switch(exprNode->semantic_value.exprSemanticValue.op.binaryOp) {
-                case BINARY_OP_ADD:
-                    fprintf(g_output, "fadd.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_SUB:
-                    fprintf(g_output, "fsub.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_MUL:
-                    fprintf(g_output, "fmul.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_DIV:
-                    fprintf(g_output, "fdiv.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
-                    break;
-                default:
-                    arithmetic = 0;
-                    break;
+            switch (exprNode->semantic_value.exprSemanticValue.op.binaryOp) {
+            case BINARY_OP_ADD:
+                fprintf(g_output, "fadd.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
+                break;
+            case BINARY_OP_SUB:
+                fprintf(g_output, "fsub.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
+                break;
+            case BINARY_OP_MUL:
+                fprintf(g_output, "fmul.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
+                break;
+            case BINARY_OP_DIV:
+                fprintf(g_output, "fdiv.s f%d,f%d,f%d\n", reg1.i, reg1.i, reg2.i);
+                break;
+            default:
+                arithmetic = 0;
+                break;
             }
             if (arithmetic) {
                 freeReg(reg2);
@@ -518,36 +518,36 @@ Reg generateExpr(AST_NODE *exprNode)
             }
             reg = getIntReg(); // for compare
             exprNode->dataType = INT_TYPE;
-            switch(exprNode->semantic_value.exprSemanticValue.op.binaryOp) {
-                case BINARY_OP_EQ:
-                    fprintf(g_output, "feq.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_GE:
-                    fprintf(g_output, "fle.s x%d,f%d,f%d\n", reg.i, reg2.i, reg1.i);
-                    break;
-                case BINARY_OP_LE:
-                    fprintf(g_output, "fle.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_NE:
-                    fprintf(g_output, "feq.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
-                    fprintf(g_output, "xori x%d,x%d,1\n", reg.i, reg.i);
-                    break;
-                case BINARY_OP_GT:
-                    fprintf(g_output, "flt.s x%d,f%d,f%d\n", reg.i, reg2.i, reg1.i);
-                    break;
-                case BINARY_OP_LT:
-                    fprintf(g_output, "flt.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_AND: //TODO:short circuit
-                    reg1 = floatToBool(reg1);
-                    reg2 = floatToBool(reg2);
-                    fprintf(g_output, "and x%d,x%d,x%d\n", reg.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_OR://TODO:short circuit
-                    reg1 = floatToBool(reg1);
-                    reg2 = floatToBool(reg2);
-                    fprintf(g_output, "or x%d,x%d,x%d\n", reg.i, reg1.i, reg2.i);
-                    break;
+            switch (exprNode->semantic_value.exprSemanticValue.op.binaryOp) {
+            case BINARY_OP_EQ:
+                fprintf(g_output, "feq.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
+                break;
+            case BINARY_OP_GE:
+                fprintf(g_output, "fle.s x%d,f%d,f%d\n", reg.i, reg2.i, reg1.i);
+                break;
+            case BINARY_OP_LE:
+                fprintf(g_output, "fle.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
+                break;
+            case BINARY_OP_NE:
+                fprintf(g_output, "feq.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
+                fprintf(g_output, "xori x%d,x%d,1\n", reg.i, reg.i);
+                break;
+            case BINARY_OP_GT:
+                fprintf(g_output, "flt.s x%d,f%d,f%d\n", reg.i, reg2.i, reg1.i);
+                break;
+            case BINARY_OP_LT:
+                fprintf(g_output, "flt.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
+                break;
+            case BINARY_OP_AND: //TODO:short circuit
+                reg1 = floatToBool(reg1);
+                reg2 = floatToBool(reg2);
+                fprintf(g_output, "and x%d,x%d,x%d\n", reg.i, reg1.i, reg2.i);
+                break;
+            case BINARY_OP_OR://TODO:short circuit
+                reg1 = floatToBool(reg1);
+                reg2 = floatToBool(reg2);
+                fprintf(g_output, "or x%d,x%d,x%d\n", reg.i, reg1.i, reg2.i);
+                break;
             }
             freeReg(reg1);
             freeReg(reg2);
@@ -624,8 +624,20 @@ void generateAssignStmt(AST_NODE *assignNode)
     Reg rvalue = generateExprGeneral(expr);
     Reg lvalue = generateVarAddress(idNode);
     if (idNode->dataType == INT_TYPE) {
+        if (rvalue.type == FLOAT_TYPE) {
+            Reg reg = getIntReg();
+            fprintf(g_output, "fcvt.w.s x%d,f%d\n", reg.i, rvalue.i); // float to int
+            freeReg(rvalue);
+            rvalue = reg;
+        }
         fprintf(g_output, "sw x%d,0(x%d)\n", rvalue.i, lvalue.i);
     } else if (idNode->dataType = FLOAT_TYPE) {
+        if (rvalue.type == INT_TYPE) {
+            Reg reg = getFloatReg();
+            fprintf(g_output, "fcvt.s.w f%d,x%d\n", reg.i, rvalue.i); // int to float
+            freeReg(rvalue);
+            rvalue = reg;
+        }
         fprintf(g_output, "fsw f%d,0(x%d)\n", rvalue.i, lvalue.i);
     } else {
         exitError("assignment to a pointer rvalue");
