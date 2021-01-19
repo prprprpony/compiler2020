@@ -171,4 +171,10 @@ AST_NODE *Allocate(AST_TYPE type);
 void semanticAnalysis(AST_NODE *root);
 void codeGeneration(AST_NODE *root);
 
+typedef struct Reg
+{
+    DATA_TYPE type; // int of float
+    int i;
+} Reg;
+
 #endif

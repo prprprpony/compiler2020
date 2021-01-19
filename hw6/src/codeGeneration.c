@@ -24,12 +24,6 @@ const char *g_regf_name[32] = {
     "fs8", "fs9", "fs10", "fs11", "ft8", "ft9", "ft10", "ft11"
 };
 
-typedef struct Reg
-{
-    DATA_TYPE type; // int of float
-    int i;
-} Reg;
-
 void exitError(char *msg);
 Reg getIntReg();
 Reg getFloatReg();
@@ -37,6 +31,8 @@ void freeReg(Reg reg);
 int push(int size);
 void pop(int size);
 Reg floatToBool(Reg reg);
+Reg floatToInt(Reg reg);
+Reg intToFloat(Reg reg);
 void generateAlignment();
 void generateDwordData(Reg reg, size_t value);
 void generateIntData(Reg reg, int value);
@@ -139,6 +135,7 @@ void pop(int size)
 
 Reg floatToBool(Reg reg)
 {
+    assert(reg.type == FLOAT_TYPE);
     Reg fz = getFloatReg();
     Reg b = getIntReg();
     fprintf(g_output, "fmv.w.x f%d,x0\n", fz.i);
@@ -147,6 +144,26 @@ Reg floatToBool(Reg reg)
     freeReg(fz);
     freeReg(reg);
     return b;
+}
+
+
+Reg floatToInt(Reg reg)
+{
+    assert(reg.type == FLOAT_TYPE);
+    Reg ireg = getIntReg();
+    fprintf(g_output, "fcvt.w.s x%d,f%d\n", ireg.i, reg.i);
+    freeReg(reg);
+    return ireg;
+}
+
+
+Reg intToFloat(Reg reg)
+{
+    assert(reg.type == INT_TYPE);
+    Reg freg = getFloatReg();
+    fprintf(g_output, "fcvt.s.w f%d,x%d\n", freg.i, reg.i);
+    freeReg(reg);
+    return freg;
 }
 
 
@@ -283,15 +300,12 @@ void generateLocalVarDecl(AST_NODE *varDeclListNode)
                         size *= TD->properties.arrayProperties.sizeInEachDimension[i];
                 entry->offset = push(size);
                 if (idNode->child) {
-                    fprintf(g_output, "DEBUG%d:\n", g_cnt++);
                     AST_NODE *v = idNode->child;
                     assert(v->nodeType == CONST_VALUE_NODE);
                     C_type t = v->semantic_value.const1->const_type;
                     assert(t == INTEGERC || t == FLOATC);
                     double val = t == INTEGERC ? v->semantic_value.const1->const_u.intval : v->semantic_value.const1->const_u.fval;
-                    fprintf(stderr, "val=%f\n", val);
                     Reg lvalue = generateVarAddress(idNode);
-                    fprintf(g_output, "ENDADDR%d:\n", g_cnt++);
                     Reg rvalue;
                     if (TD->properties.dataType == INT_TYPE) {
                         generateIntData(rvalue = getIntReg(), val);
@@ -323,15 +337,28 @@ void generateBlock(AST_NODE *blockNode)
 
 Reg generateVarValue(AST_NODE *idNode)
 {
-    Reg reg = generateVarAddress(idNode);
-    if (idNode->dataType == INT_TYPE) {
-        fprintf(g_output, "lw x%d,0(x%d)\n", reg.i, reg.i);
-    } else if (idNode->dataType == FLOAT_TYPE) {
-        Reg reg2 = getFloatReg();
-        fprintf(g_output, "flw f%d,0(x%d)\n", reg2.i, reg.i);
-        freeReg(reg);
-        reg = reg2;
-    } else { // pointer
+    Reg reg;
+    SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+    Reg param = entry->paramReg;
+    if (param.i != -1) { // function parameter
+        if (param.type == INT_TYPE) {
+            reg = getIntReg();
+            fprintf(g_output, "mv x%d,a%d\n", reg.i, param.i);
+        } else {
+            reg = getFloatReg();
+            fprintf(g_output, "fmv.s f%d,fa%d\n", reg.i, param.i);
+        }
+    } else {
+        reg = generateVarAddress(idNode);
+        if (idNode->dataType == INT_TYPE) {
+            fprintf(g_output, "lw x%d,0(x%d)\n", reg.i, reg.i);
+        } else if (idNode->dataType == FLOAT_TYPE) {
+            Reg reg2 = getFloatReg();
+            fprintf(g_output, "flw f%d,0(x%d)\n", reg2.i, reg.i);
+            freeReg(reg);
+            reg = reg2;
+        } else { // pointer
+        }
     }
     return reg;
 }
@@ -341,8 +368,8 @@ Reg generateVarAddress(AST_NODE *idNode)
 {
     Reg reg = getIntReg(), reg2;
     SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+    assert(entry);
     if (idNode->semantic_value.identifierSemanticValue.kind == ARRAY_ID) {
-        fprintf(g_output,"VAR_this_case%d:\n", g_cnt++);
         ArrayProperties AP = entry->attribute->attr.typeDescriptor->properties.arrayProperties;
         idNode->dataType = AP.elementType;
         int i = 0;
@@ -555,18 +582,10 @@ Reg generateExpr(AST_NODE *exprNode)
             freeReg(reg2);
             return reg1;
         } else {//float
-            if (reg1.type == INT_TYPE) {
-                reg = getFloatReg();
-                fprintf(g_output, "fcvt.s.w f%d,x%d\n", reg.i, reg1.i); // int to float
-                freeReg(reg1);
-                reg1 = reg;
-            }
-            if (reg2.type == INT_TYPE) {
-                reg = getFloatReg();
-                fprintf(g_output, "fcvt.s.w f%d,x%d\n", reg.i, reg2.i); // int to float
-                freeReg(reg2);
-                reg2 = reg;
-            }
+            if (reg1.type == INT_TYPE)
+                reg1 = intToFloat(reg1);
+            if (reg2.type == INT_TYPE)
+                reg2 = intToFloat(reg2);
             int arithmetic = 1;
             switch (exprNode->semantic_value.exprSemanticValue.op.binaryOp) {
             case BINARY_OP_ADD:
@@ -684,29 +703,35 @@ void generateAssignStmt(AST_NODE *assignNode)
 {
     AST_NODE *idNode = assignNode->child;
     AST_NODE *expr = idNode->rightSibling;
+    SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+    Reg param = entry->paramReg;
     Reg rvalue = generateExprGeneral(expr);
-    Reg lvalue = generateVarAddress(idNode);
-    if (idNode->dataType == INT_TYPE) {
-        if (rvalue.type == FLOAT_TYPE) {
-            Reg reg = getIntReg();
-            fprintf(g_output, "fcvt.w.s x%d,f%d\n", reg.i, rvalue.i); // float to int
-            freeReg(rvalue);
-            rvalue = reg;
+    if (param.i != -1) { // function parameter
+        if (param.type == INT_TYPE) {
+            if (rvalue.type == FLOAT_TYPE)
+                rvalue = floatToInt(rvalue);
+            fprintf(g_output, "mv a%d,x%d\n", param.i, rvalue.i);
+        } else {
+            if (rvalue.type == INT_TYPE)
+                rvalue = intToFloat(rvalue);
+            fprintf(g_output, "fmv fa%d,f%d\n", param.i, rvalue.i);
         }
-        fprintf(g_output, "sw x%d,0(x%d)\n", rvalue.i, lvalue.i);
-    } else if (idNode->dataType = FLOAT_TYPE) {
-        if (rvalue.type == INT_TYPE) {
-            Reg reg = getFloatReg();
-            fprintf(g_output, "fcvt.s.w f%d,x%d\n", reg.i, rvalue.i); // int to float
-            freeReg(rvalue);
-            rvalue = reg;
-        }
-        fprintf(g_output, "fsw f%d,0(x%d)\n", rvalue.i, lvalue.i);
     } else {
-        exitError("assignment to a pointer rvalue");
+        Reg lvalue = generateVarAddress(idNode);
+        if (idNode->dataType == INT_TYPE) {
+            if (rvalue.type == FLOAT_TYPE)
+                rvalue = floatToInt(rvalue);
+            fprintf(g_output, "sw x%d,0(x%d)\n", rvalue.i, lvalue.i);
+        } else if (idNode->dataType == FLOAT_TYPE) {
+            if (rvalue.type == INT_TYPE) 
+                rvalue = intToFloat(rvalue);
+            fprintf(g_output, "fsw f%d,0(x%d)\n", rvalue.i, lvalue.i);
+        } else {
+            exitError("assignment to a pointer rvalue");
+        }
+        freeReg(lvalue);
     }
     freeReg(rvalue);
-    freeReg(lvalue);
 }
 
 
@@ -749,10 +774,32 @@ void generateWrite(AST_NODE *node)
 void generateFunctionCall(AST_NODE *funcNode)//Parameterless procedure calls only
 {
     AST_NODE *idNode = funcNode->child;
+    AST_NODE *paramNode = idNode->rightSibling->child;
     char *name = idNode->semantic_value.identifierSemanticValue.identifierName;
     if (strcmp(name, "write") == 0) {
         generateWrite(idNode);
         return;
+    }
+    funcNode->dataType = idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature->returnType;
+    FunctionSignature fs = *idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature;
+    Parameter *p = fs.parameterList;
+    for (int i = 0; i < fs.parametersCount; ++i, paramNode = paramNode->rightSibling, p = p->next) {
+        Reg reg = generateExprGeneral(paramNode);
+        if (p->type->properties.dataType == INT_TYPE) {
+            if (reg.type == FLOAT_TYPE)
+                reg = floatToInt(reg);
+            if (i <= 7) {
+                fprintf(g_output, "mv a%d,x%d\n", i, reg.i);
+            } else {// TODO
+            }
+        } else {
+            if (reg.type == INT_TYPE)
+                reg = intToFloat(reg);
+            if (i <= 7) {
+                fprintf(g_output, "fmv.s fa%d,f%d\n", i, reg.i);
+            } else {// TODO
+            }
+        }
     }
     if (strcmp(name, "read") == 0)
         fprintf(g_output, "jal _read_int\n");
@@ -760,7 +807,6 @@ void generateFunctionCall(AST_NODE *funcNode)//Parameterless procedure calls onl
         fprintf(g_output, "jal _read_float\n");
     else
         fprintf(g_output, "jal _start_%s\n", name);
-    funcNode->dataType = idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature->returnType;
 }
 
 
@@ -830,13 +876,28 @@ void generateStmtList(AST_NODE *stmtListNode)
 
 void generateFunctionDecl(AST_NODE *funcDeclNode)
 {
-    AST_NODE* typeNode = funcDeclNode->child;
-    AST_NODE* idNode = typeNode->rightSibling;
-    AST_NODE* paramListNode = idNode->rightSibling;
-    AST_NODE* blockNode = paramListNode->rightSibling;
+    AST_NODE *typeNode = funcDeclNode->child;
+    AST_NODE *idNode = typeNode->rightSibling;
+    AST_NODE *paramListNode = idNode->rightSibling;
+    AST_NODE *blockNode = paramListNode->rightSibling;
     char *name = idNode->semantic_value.identifierSemanticValue.identifierName;
     generateHead(name);
     generatePrologue(name);
+    int i = 0;
+    for (AST_NODE *traverseParamNode = paramListNode->child; traverseParamNode; traverseParamNode = traverseParamNode->rightSibling, i++) {
+        AST_NODE *paramIdNode = traverseParamNode->child->rightSibling;
+        SymbolTableEntry *entry = paramIdNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+        assert(entry);
+        TypeDescriptor *TD = entry->attribute->attr.typeDescriptor;
+        if (TD->kind == SCALAR_TYPE_DESCRIPTOR) {
+            if (i <= 7) {
+                entry->paramReg.i = i;
+                entry->paramReg.type = TD->properties.dataType;
+            } else { // TODO
+            }
+        } else { // TODO array
+        }
+    }
     generateBlock(blockNode);
     generateEpilogue(name);
 }
