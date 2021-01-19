@@ -151,7 +151,7 @@ Reg floatToInt(Reg reg)
 {
     assert(reg.type == FLOAT_TYPE);
     Reg ireg = getIntReg();
-    fprintf(g_output, "fcvt.w.s x%d,f%d\n", ireg.i, reg.i);
+    fprintf(g_output, "fcvt.w.s x%d,f%d,rtz\n", ireg.i, reg.i);
     freeReg(reg);
     return ireg;
 }
@@ -771,7 +771,7 @@ void generateWrite(AST_NODE *node)
 }
 
 
-void generateFunctionCall(AST_NODE *funcNode)//Parameterless procedure calls only
+void generateFunctionCall(AST_NODE *funcNode)
 {
     AST_NODE *idNode = funcNode->child;
     AST_NODE *paramNode = idNode->rightSibling->child;
@@ -800,6 +800,7 @@ void generateFunctionCall(AST_NODE *funcNode)//Parameterless procedure calls onl
             } else {// TODO
             }
         }
+        freeReg(reg);
     }
     if (strcmp(name, "read") == 0)
         fprintf(g_output, "jal _read_int\n");
@@ -816,7 +817,7 @@ void generateReturnStmt(AST_NODE *returnNode)
         Reg reg = generateExprGeneral(returnNode->child);
         if (returnNode->dataType == INT_TYPE) {
             if (reg.type == FLOAT_TYPE)
-                fprintf(g_output, "fcvt.w.s a0,f%d\n", reg.i);
+                fprintf(g_output, "fcvt.w.s a0,f%d,rtz\n", reg.i);
             else
                 fprintf(g_output, "mv a0,x%d\n", reg.i);
         } else {
