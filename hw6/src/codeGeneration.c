@@ -445,6 +445,36 @@ Reg generateExpr(AST_NODE *exprNode)
         AST_NODE *left = exprNode->child;
         AST_NODE *right = left->rightSibling;
         exprNode->dataType = (left->dataType == FLOAT_TYPE || right->dataType == FLOAT_TYPE) ? FLOAT_TYPE : INT_TYPE;
+        if (exprNode->semantic_value.exprSemanticValue.op.binaryOp == BINARY_OP_AND) {
+            reg1 = generateExprTest(left);
+            freeReg(reg1);
+            int cnt = g_cnt++;
+            fprintf(g_output, "beqz x%d,_and_end_%d\n", reg1.i, cnt);
+            reg2 = generateExprTest(right);
+            if (reg2.i != reg1.i) {
+                freeReg(reg2);
+                assert(g_regx[reg1.i] == 0);
+                g_regx[reg1.i] = 1;
+                fprintf(g_output, "mv x%d,x%d\n", reg1.i, reg2.i);
+            }
+            fprintf(g_output, "_and_end_%d:\n", cnt);
+            return reg1;
+        } else if (exprNode->semantic_value.exprSemanticValue.op.binaryOp == BINARY_OP_OR) {
+            reg1 = generateExprTest(left);
+            freeReg(reg1);
+            int cnt = g_cnt++;
+            fprintf(g_output, "bnez x%d,_or_end_%d\n", reg1.i, cnt);
+            reg2 = generateExprTest(right);
+            if (reg2.i != reg1.i) {
+                freeReg(reg2);
+                assert(g_regx[reg1.i] == 0);
+                g_regx[reg1.i] = 1;
+                fprintf(g_output, "mv x%d,x%d\n", reg1.i, reg2.i);
+            }
+            fprintf(g_output, "_or_end_%d:\n", cnt);
+            return reg1;
+        }
+
         reg1 = generateExprGeneral(left);
         int offset = push(4);
         if (reg1.type == INT_TYPE)
@@ -496,16 +526,6 @@ Reg generateExpr(AST_NODE *exprNode)
                     break;
                 case BINARY_OP_LT:
                     fprintf(g_output, "slt x%d,x%d,x%d\n", reg1.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_AND: //TODO:short circuit
-                    fprintf(g_output, "snez x%d,x%d\n", reg1.i, reg1.i);
-                    fprintf(g_output, "snez x%d,x%d\n", reg2.i, reg2.i);
-                    fprintf(g_output, "and x%d,x%d,x%d\n", reg1.i, reg1.i, reg2.i);
-                    break;
-                case BINARY_OP_OR://TODO:short circuit
-                    fprintf(g_output, "snez x%d,x%d\n", reg1.i, reg1.i);
-                    fprintf(g_output, "snez x%d,x%d\n", reg2.i, reg2.i);
-                    fprintf(g_output, "or x%d,x%d,x%d\n", reg1.i, reg1.i, reg2.i);
                     break;
             }
             freeReg(reg2);
@@ -566,16 +586,6 @@ Reg generateExpr(AST_NODE *exprNode)
                 break;
             case BINARY_OP_LT:
                 fprintf(g_output, "flt.s x%d,f%d,f%d\n", reg.i, reg1.i, reg2.i);
-                break;
-            case BINARY_OP_AND: //TODO:short circuit
-                reg1 = floatToBool(reg1);
-                reg2 = floatToBool(reg2);
-                fprintf(g_output, "and x%d,x%d,x%d\n", reg.i, reg1.i, reg2.i);
-                break;
-            case BINARY_OP_OR://TODO:short circuit
-                reg1 = floatToBool(reg1);
-                reg2 = floatToBool(reg2);
-                fprintf(g_output, "or x%d,x%d,x%d\n", reg.i, reg1.i, reg2.i);
                 break;
             }
             freeReg(reg1);
