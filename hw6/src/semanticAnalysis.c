@@ -389,6 +389,7 @@ void declareIdList(AST_NODE* declarationNode, SymbolAttributeKind isVariableOrTy
             else
             {
                 attribute->attr.typeDescriptor = typeNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.typeDescriptor;
+                processExprRelatedNode(traverseIDList->child);
             }
             break;
         default:

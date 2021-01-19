@@ -57,7 +57,7 @@ void generateWhileStmt(AST_NODE *whileNode);
 void generateForStmt(AST_NODE *forNode);
 void generateAssignStmt(AST_NODE *assignNode);
 void generateIfStmt(AST_NODE *ifNode);
-void generateFunctionCall(AST_NODE *funcNode);
+Reg generateFunctionCall(AST_NODE *funcNode);
 void generateReturnStmt(AST_NODE *returnNode);
 Reg generateExprTest(AST_NODE *exprNode);
 Reg generateExprGeneral(AST_NODE *exprNode);
@@ -301,20 +301,18 @@ void generateLocalVarDecl(AST_NODE *varDeclListNode)
                 entry->offset = push(size);
                 if (idNode->child) {
                     AST_NODE *v = idNode->child;
-                    assert(v->nodeType == CONST_VALUE_NODE);
-                    C_type t = v->semantic_value.const1->const_type;
-                    assert(t == INTEGERC || t == FLOATC);
-                    double val = t == INTEGERC ? v->semantic_value.const1->const_u.intval : v->semantic_value.const1->const_u.fval;
+                    Reg rvalue = generateExprGeneral(v);
                     Reg lvalue = generateVarAddress(idNode);
-                    Reg rvalue;
-                    if (TD->properties.dataType == INT_TYPE) {
-                        generateIntData(rvalue = getIntReg(), val);
+                    if (idNode->dataType == INT_TYPE) {
+                        if (rvalue.type == FLOAT_TYPE)
+                            rvalue = floatToInt(rvalue);
                         fprintf(g_output, "sw x%d,0(x%d)\n", rvalue.i, lvalue.i);
-                    } else if (TD->properties.dataType == FLOAT_TYPE) {
-                        generateFloatData(rvalue = getFloatReg(), val);
+                    } else if (idNode->dataType == FLOAT_TYPE) {
+                        if (rvalue.type == INT_TYPE) 
+                            rvalue = intToFloat(rvalue);
                         fprintf(g_output, "fsw f%d,0(x%d)\n", rvalue.i, lvalue.i);
                     } else {
-                        exitError("TD not int or float");
+                        exitError("assignment to a pointer rvalue");
                     }
                     freeReg(lvalue);
                     freeReg(rvalue);
@@ -339,6 +337,7 @@ Reg generateVarValue(AST_NODE *idNode)
 {
     Reg reg;
     SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+    assert(entry);
     Reg param = entry->paramReg;
     if (param.i != -1) { // function parameter
         if (param.type == INT_TYPE) {
@@ -447,15 +446,7 @@ Reg generateExprGeneral(AST_NODE *exprNode)
     case EXPR_NODE:
         return generateExpr(exprNode);
     case STMT_NODE: // function call
-        generateFunctionCall(exprNode);
-        if (exprNode->dataType == INT_TYPE) {
-            reg = getIntReg();
-            fprintf(g_output, "mv x%d,a0\n", reg.i);
-        } else {
-            reg = getFloatReg();
-            fprintf(g_output, "fmv.s f%d,fa0\n", reg.i);
-        }
-        break;
+        return generateFunctionCall(exprNode);
     case IDENTIFIER_NODE:
         return generateVarValue(exprNode);
     case CONST_VALUE_NODE:
@@ -695,7 +686,20 @@ void generateWhileStmt(AST_NODE *whileNode)
 
 void generateForStmt(AST_NODE *forNode)//TODO
 {
-    return;
+    int cnt = g_cnt++;
+    AST_NODE *initExpression = forNode->child;
+    AST_NODE *conditionExpression = initExpression->rightSibling;
+    AST_NODE *loopExpression = conditionExpression->rightSibling;
+    AST_NODE *bodyNode = loopExpression->rightSibling;
+    generateStmtList(initExpression);
+    fprintf(g_output, "_for_%d:\n", cnt);
+    Reg reg = generateExprTest(conditionExpression->child);
+    freeReg(reg);
+    fprintf(g_output, "beqz x%d,_end_for_%d\n", reg.i, cnt);
+    generateStmt(bodyNode);
+    generateStmtList(loopExpression);
+    fprintf(g_output, "j _for_%d\n",  cnt);
+    fprintf(g_output, "_end_for_%d:\n",  cnt);
 }
 
 
@@ -758,49 +762,78 @@ void generateWrite(AST_NODE *node)
     AST_NODE *paramNode = node->rightSibling->child;
     Reg reg = generateExprGeneral(paramNode);
     if (paramNode->dataType == INT_TYPE) {
+        Reg tmp = getIntReg();
+        fprintf(g_output, "mv x%d,a0\n", tmp.i);
         fprintf(g_output, "mv a0,x%d\n", reg.i);
         fprintf(g_output, "jal _write_int\n");
+        fprintf(g_output, "mv a0,x%d\n", tmp.i);
+        freeReg(tmp);
     } else if (paramNode->dataType == FLOAT_TYPE) {
+        Reg tmp = getFloatReg();
+        fprintf(g_output, "fmv.s f%d,fa0\n", tmp.i);
         fprintf(g_output, "fmv.s fa0,f%d\n", reg.i);
         fprintf(g_output, "jal _write_float\n");
+        fprintf(g_output, "fmv.s fa0,f%d\n", tmp.i);
+        freeReg(tmp);
     } else if (paramNode->dataType == CONST_STRING_TYPE) {
+        Reg tmp = getIntReg();
+        fprintf(g_output, "mv x%d,a0\n", tmp.i);
         fprintf(g_output, "mv a0,x%d\n", reg.i);
         fprintf(g_output, "jal _write_str\n");
+        fprintf(g_output, "mv a0,x%d\n", tmp.i);
+        freeReg(tmp);
     }
     freeReg(reg);
 }
 
 
-void generateFunctionCall(AST_NODE *funcNode)
+Reg generateFunctionCall(AST_NODE *funcNode)
 {
+    Reg reg;
+    reg.i = -1;
     AST_NODE *idNode = funcNode->child;
     AST_NODE *paramNode = idNode->rightSibling->child;
     char *name = idNode->semantic_value.identifierSemanticValue.identifierName;
     if (strcmp(name, "write") == 0) {
         generateWrite(idNode);
-        return;
+        return reg;
     }
+    int offset = g_offset;
+    for (int i = 0; i <= 7; ++i)
+        fprintf(g_output, "sd a%d,%d(sp)\n", i, push(8));
+    for (int i = 0; i <= 7; ++i)
+        fprintf(g_output, "fsw fa%d,%d(sp)\n", i, push(8));
     funcNode->dataType = idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature->returnType;
     FunctionSignature fs = *idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature;
-    Parameter *p = fs.parameterList;
+    Parameter *p0 = fs.parameterList;
+    Parameter *p = p0;
+    int offset2 = g_offset;
     for (int i = 0; i < fs.parametersCount; ++i, paramNode = paramNode->rightSibling, p = p->next) {
         Reg reg = generateExprGeneral(paramNode);
         if (p->type->properties.dataType == INT_TYPE) {
             if (reg.type == FLOAT_TYPE)
                 reg = floatToInt(reg);
-            if (i <= 7) {
-                fprintf(g_output, "mv a%d,x%d\n", i, reg.i);
-            } else {// TODO
-            }
-        } else {
+            fprintf(g_output, "sd x%d,%d(sp)\n", reg.i, push(4));
+        } else { //TODO array
             if (reg.type == INT_TYPE)
                 reg = intToFloat(reg);
+            fprintf(g_output, "fsw f%d,%d(sp)\n", reg.i, push(4));
+        }
+        freeReg(reg);
+    }
+    p = p0;
+    for (int i = 0; i < fs.parametersCount; ++i, p = p->next, offset2 += 4, pop(4)) {
+        if (p->type->properties.dataType == INT_TYPE) {
             if (i <= 7) {
-                fprintf(g_output, "fmv.s fa%d,f%d\n", i, reg.i);
+                fprintf(g_output, "ld a%d,%d(sp)\n", i, offset2);
+            } else {// TODO
+            }
+        } else { // TODO array
+            if (i <= 7) {
+                fprintf(g_output, "flw fa%d,%d(sp)\n", i, offset2);
             } else {// TODO
             }
         }
-        freeReg(reg);
     }
     if (strcmp(name, "read") == 0)
         fprintf(g_output, "jal _read_int\n");
@@ -808,6 +841,24 @@ void generateFunctionCall(AST_NODE *funcNode)
         fprintf(g_output, "jal _read_float\n");
     else
         fprintf(g_output, "jal _start_%s\n", name);
+    SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+    assert(entry);
+    assert(entry->attribute->attributeKind == FUNCTION_SIGNATURE);
+    DATA_TYPE returnType = entry->attribute->attr.functionSignature->returnType;
+    if (returnType == INT_TYPE) {
+        reg = getIntReg();
+        fprintf(g_output, "mv x%d,a0\n", reg.i);
+    } else if (returnType == FLOAT_TYPE) {
+        reg = getFloatReg();
+        fprintf(g_output, "fmv.s f%d,fa0\n", reg.i);
+    } else {
+        assert(returnType == VOID_TYPE);
+    }
+    for (int i = 0; i <= 7; ++i, offset += 8, pop(8))
+        fprintf(g_output, "ld a%d,%d(sp)\n", i, offset);
+    for (int i = 0; i <= 7; ++i, offset += 8, pop(8))
+        fprintf(g_output, "flw fa%d,%d(sp)\n", i, offset);
+    return reg;
 }
 
 
