@@ -12,7 +12,11 @@ int MAIN()
 {
   int a=1,b=2;
   int result;
-  
+ 
+  write(a); 
+  write("\n"); 
+  write(b); 
+  write("\n"); 
   result=func(a,b)-3;
   
   write(result);

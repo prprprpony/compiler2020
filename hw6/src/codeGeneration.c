@@ -282,6 +282,29 @@ void generateLocalVarDecl(AST_NODE *varDeclListNode)
                     for (int i = 0; i < TD->properties.arrayProperties.dimension; ++i)
                         size *= TD->properties.arrayProperties.sizeInEachDimension[i];
                 entry->offset = push(size);
+                if (idNode->child) {
+                    fprintf(g_output, "DEBUG%d:\n", g_cnt++);
+                    AST_NODE *v = idNode->child;
+                    assert(v->nodeType == CONST_VALUE_NODE);
+                    C_type t = v->semantic_value.const1->const_type;
+                    assert(t == INTEGERC || t == FLOATC);
+                    double val = t == INTEGERC ? v->semantic_value.const1->const_u.intval : v->semantic_value.const1->const_u.fval;
+                    fprintf(stderr, "val=%f\n", val);
+                    Reg lvalue = generateVarAddress(idNode);
+                    fprintf(g_output, "ENDADDR%d:\n", g_cnt++);
+                    Reg rvalue;
+                    if (TD->properties.dataType == INT_TYPE) {
+                        generateIntData(rvalue = getIntReg(), val);
+                        fprintf(g_output, "sw x%d,0(x%d)\n", rvalue.i, lvalue.i);
+                    } else if (TD->properties.dataType == FLOAT_TYPE) {
+                        generateFloatData(rvalue = getFloatReg(), val);
+                        fprintf(g_output, "fsw f%d,0(x%d)\n", rvalue.i, lvalue.i);
+                    } else {
+                        exitError("TD not int or float");
+                    }
+                    freeReg(lvalue);
+                    freeReg(rvalue);
+                }
             }
 }
 
@@ -318,14 +341,8 @@ Reg generateVarAddress(AST_NODE *idNode)
 {
     Reg reg = getIntReg(), reg2;
     SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
-    if (idNode->semantic_value.identifierSemanticValue.kind == NORMAL_ID) {
-        idNode->dataType = entry->attribute->attr.typeDescriptor->properties.dataType;
-        if (entry->nestingLevel == 0) { // global variable
-            fprintf(g_output, "la x%d,_g_%s\n", reg.i, idNode->semantic_value.identifierSemanticValue.identifierName);
-        } else {
-            generateAddi(reg, "sp", entry->offset);
-        }
-    } else { // array access
+    if (idNode->semantic_value.identifierSemanticValue.kind == ARRAY_ID) {
+        fprintf(g_output,"VAR_this_case%d:\n", g_cnt++);
         ArrayProperties AP = entry->attribute->attr.typeDescriptor->properties.arrayProperties;
         idNode->dataType = AP.elementType;
         int i = 0;
@@ -337,7 +354,7 @@ Reg generateVarAddress(AST_NODE *idNode)
                 fprintf(g_output, "mul x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
                 freeReg(reg2);
             }
-            reg2 = generateExprGeneral(dimListNode);
+            reg2 = generateExprGeneral(dimListNode); // TODO: freeReg(reg) ?
             fprintf(g_output, "add x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
             freeReg(reg2);
         }
@@ -357,6 +374,13 @@ Reg generateVarAddress(AST_NODE *idNode)
             generateAddi(reg2, "sp", entry->offset);
         fprintf(g_output, "add x%d,x%d,x%d\n", reg.i, reg.i, reg2.i);
         freeReg(reg2);
+    } else { // scalar variable
+        idNode->dataType = entry->attribute->attr.typeDescriptor->properties.dataType;
+        if (entry->nestingLevel == 0) { // global variable
+            fprintf(g_output, "la x%d,_g_%s\n", reg.i, idNode->semantic_value.identifierSemanticValue.identifierName);
+        } else {
+            generateAddi(reg, "sp", entry->offset);
+        }
     }
     return reg;
 }
