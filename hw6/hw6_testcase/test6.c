@@ -1,6 +1,16 @@
 
 int a[10];
 
+void p()
+{
+    int i;
+    for (i = 0; i < 10; i = i+1) {
+        write(a[i]);
+        write(" ");
+    }
+    write("\n");
+}
+
 void heapify(int N,int idx){
   int Largest=idx;
   int Left=2*idx+1;
@@ -28,6 +38,7 @@ void heapsort(int N){
   int tmp;
   for(i=(N/2)-1;i>=0;i=i-1){
     heapify(N,i);
+    p();
   }
   
   for(i=N-1;i>=0;i=i-1){

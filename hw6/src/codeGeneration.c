@@ -45,6 +45,7 @@ Reg generateVarAddress(AST_NODE *idNode);
 Reg generateVarValue(AST_NODE *idNode);
 void generateAddi(Reg rd, const char *rs1, int imm);
 void generateStoreLoad(const char *ins, Reg rd, const char *rs1, int imm);
+void generateStoreLoadSP(const char *ins, const char *rg, int i, int imm);
 
 void generateProgram(AST_NODE *root);
 void generateGlobalVarDecl(AST_NODE *varDeclListNode);
@@ -255,13 +256,13 @@ void generatePrologue(char *name)
     fprintf(g_output, "sub sp,sp,ra\n");
     int offset = 8;
     for (int i = 0; i <= 6; ++i, offset += 8)
-        fprintf(g_output, "sd t%d,%d(sp)\n", i, offset);
+        generateStoreLoadSP("sd", "t", i, offset);
     for (int i = 2; i <= 11; ++i, offset += 8)
-        fprintf(g_output, "sd s%d,%d(sp)\n", i, offset);
-    fprintf(g_output, "sd fp,%d(sp)\n", offset);
-    offset += 8;
+        generateStoreLoadSP("sd", "s", i, offset);
+    //fprintf(g_output, "sd fp,%d(sp)\n", offset);
+    //offset += 8;
     for (int i = 0; i <= 7; ++i, offset += 4)
-        fprintf(g_output, "fsw ft%d,%d(sp)\n", i, offset);
+        generateStoreLoadSP("fsw", "ft", i, offset);
     g_max_offset = g_offset = offset;
 }
 
@@ -271,13 +272,13 @@ void generateEpilogue(char *name)
     fprintf(g_output, "_end_%s:\n", name);
     int offset = 8;
     for (int i = 0; i <= 6; ++i, offset += 8)
-        fprintf(g_output, "ld t%d,%d(sp)\n", i, offset);
+        generateStoreLoadSP("ld", "t", i, offset);
     for (int i = 2; i <= 11; ++i, offset += 8)
-        fprintf(g_output, "ld s%d,%d(sp)\n", i, offset);
-    fprintf(g_output, "ld fp,%d(sp)\n", offset);
-    offset += 8;
+        generateStoreLoadSP("ld", "s", i, offset);
+    //fprintf(g_output, "ld fp,%d(sp)\n", offset);
+    //offset += 8;
     for (int i = 0; i <= 7; ++i, offset += 4)
-        fprintf(g_output, "flw ft%d,%d(sp)\n", i, offset);
+        generateStoreLoadSP("flw", "ft", i, offset);
     fprintf(g_output, "ld ra,8(fp)\n");
     fprintf(g_output, "addi sp,fp,8\n");
     fprintf(g_output, "ld fp,0(fp)\n");
@@ -439,13 +440,27 @@ void generateStoreLoad(const char *ins, Reg rd, const char *rs1, int imm)
 }
 
 
+void generateStoreLoadSP(const char *ins, const char *rg, int i, int imm)
+{
+    if (abs(imm) < 2048) {
+        fprintf(g_output, "%s %s%d,%d(sp)\n", ins, rg, i, imm);
+    } else {
+        Reg immReg = getIntReg();
+        generateIntData(immReg, imm);
+        fprintf(g_output, "add x%d,x%d,sp\n", immReg.i, immReg.i);
+        fprintf(g_output, "%s %s%d,0(x%d)\n", ins, rg, i, immReg.i);
+        freeReg(immReg);
+    }
+}
+
+
 Reg generateExprGeneral(AST_NODE *exprNode)
 {
     Reg reg, reg2;
     switch (exprNode->nodeType) {
     case EXPR_NODE:
         return generateExpr(exprNode);
-    case STMT_NODE: // function call
+    case STMT_NODE:
         return generateFunctionCall(exprNode);
     case IDENTIFIER_NODE:
         return generateVarValue(exprNode);
@@ -684,7 +699,7 @@ void generateWhileStmt(AST_NODE *whileNode)
 }
 
 
-void generateForStmt(AST_NODE *forNode)//TODO
+void generateForStmt(AST_NODE *forNode)
 {
     int cnt = g_cnt++;
     AST_NODE *initExpression = forNode->child;
@@ -762,26 +777,14 @@ void generateWrite(AST_NODE *node)
     AST_NODE *paramNode = node->rightSibling->child;
     Reg reg = generateExprGeneral(paramNode);
     if (paramNode->dataType == INT_TYPE) {
-        Reg tmp = getIntReg();
-        fprintf(g_output, "mv x%d,a0\n", tmp.i);
         fprintf(g_output, "mv a0,x%d\n", reg.i);
         fprintf(g_output, "jal _write_int\n");
-        fprintf(g_output, "mv a0,x%d\n", tmp.i);
-        freeReg(tmp);
     } else if (paramNode->dataType == FLOAT_TYPE) {
-        Reg tmp = getFloatReg();
-        fprintf(g_output, "fmv.s f%d,fa0\n", tmp.i);
         fprintf(g_output, "fmv.s fa0,f%d\n", reg.i);
         fprintf(g_output, "jal _write_float\n");
-        fprintf(g_output, "fmv.s fa0,f%d\n", tmp.i);
-        freeReg(tmp);
     } else if (paramNode->dataType == CONST_STRING_TYPE) {
-        Reg tmp = getIntReg();
-        fprintf(g_output, "mv x%d,a0\n", tmp.i);
         fprintf(g_output, "mv a0,x%d\n", reg.i);
         fprintf(g_output, "jal _write_str\n");
-        fprintf(g_output, "mv a0,x%d\n", tmp.i);
-        freeReg(tmp);
     }
     freeReg(reg);
 }
@@ -794,70 +797,71 @@ Reg generateFunctionCall(AST_NODE *funcNode)
     AST_NODE *idNode = funcNode->child;
     AST_NODE *paramNode = idNode->rightSibling->child;
     char *name = idNode->semantic_value.identifierSemanticValue.identifierName;
-    if (strcmp(name, "write") == 0) {
-        generateWrite(idNode);
-        return reg;
-    }
     int offset = g_offset;
     for (int i = 0; i <= 7; ++i)
-        fprintf(g_output, "sd a%d,%d(sp)\n", i, push(8));
+        generateStoreLoadSP("sd", "a", i, push(8));
     for (int i = 0; i <= 7; ++i)
-        fprintf(g_output, "fsw fa%d,%d(sp)\n", i, push(8));
-    funcNode->dataType = idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature->returnType;
-    FunctionSignature fs = *idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature;
-    Parameter *p0 = fs.parameterList;
-    Parameter *p = p0;
-    int offset2 = g_offset;
-    for (int i = 0; i < fs.parametersCount; ++i, paramNode = paramNode->rightSibling, p = p->next) {
-        Reg reg = generateExprGeneral(paramNode);
-        if (p->type->properties.dataType == INT_TYPE) {
-            if (reg.type == FLOAT_TYPE)
-                reg = floatToInt(reg);
-            fprintf(g_output, "sd x%d,%d(sp)\n", reg.i, push(4));
-        } else { //TODO array
-            if (reg.type == INT_TYPE)
-                reg = intToFloat(reg);
-            fprintf(g_output, "fsw f%d,%d(sp)\n", reg.i, push(4));
-        }
-        freeReg(reg);
-    }
-    p = p0;
-    for (int i = 0; i < fs.parametersCount; ++i, p = p->next, offset2 += 4, pop(4)) {
-        if (p->type->properties.dataType == INT_TYPE) {
-            if (i <= 7) {
-                fprintf(g_output, "ld a%d,%d(sp)\n", i, offset2);
-            } else {// TODO
-            }
-        } else { // TODO array
-            if (i <= 7) {
-                fprintf(g_output, "flw fa%d,%d(sp)\n", i, offset2);
-            } else {// TODO
-            }
-        }
-    }
-    if (strcmp(name, "read") == 0)
-        fprintf(g_output, "jal _read_int\n");
-    else if (strcmp(name, "fread") == 0)
-        fprintf(g_output, "jal _read_float\n");
-    else
-        fprintf(g_output, "jal _start_%s\n", name);
-    SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
-    assert(entry);
-    assert(entry->attribute->attributeKind == FUNCTION_SIGNATURE);
-    DATA_TYPE returnType = entry->attribute->attr.functionSignature->returnType;
-    if (returnType == INT_TYPE) {
-        reg = getIntReg();
-        fprintf(g_output, "mv x%d,a0\n", reg.i);
-    } else if (returnType == FLOAT_TYPE) {
-        reg = getFloatReg();
-        fprintf(g_output, "fmv.s f%d,fa0\n", reg.i);
+        generateStoreLoadSP("fsw", "fa", i, push(8));
+    if (strcmp(name, "write") == 0) {
+        generateWrite(idNode);
     } else {
-        assert(returnType == VOID_TYPE);
+        funcNode->dataType = idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature->returnType;
+        FunctionSignature fs = *idNode->semantic_value.identifierSemanticValue.symbolTableEntry->attribute->attr.functionSignature;
+        Parameter *p0 = fs.parameterList;
+        Parameter *p = p0;
+        int offset2 = g_offset;
+        for (int i = 0; i < fs.parametersCount; ++i, paramNode = paramNode->rightSibling, p = p->next) {
+            Reg reg = generateExprGeneral(paramNode);
+            if (p->type->properties.dataType == INT_TYPE) {
+                if (reg.type == FLOAT_TYPE)
+                    reg = floatToInt(reg);
+                generateStoreLoadSP("sd", "x", reg.i, push(4));
+            } else { //TODO array
+                if (reg.type == INT_TYPE)
+                    reg = intToFloat(reg);
+                generateStoreLoadSP("fsw", "f", reg.i, push(4));
+            }
+            freeReg(reg);
+        }
+        p = p0;
+        for (int i = 0; i < fs.parametersCount; ++i, p = p->next, offset2 += 4, pop(4)) {
+            if (p->type->properties.dataType == INT_TYPE) {
+                if (i <= 7) {
+                    generateStoreLoadSP("ld", "a", i, offset2);
+                } else {// TODO
+                }
+            } else { // TODO array
+                if (i <= 7) {
+                    generateStoreLoadSP("flw", "fa", i, offset2);
+                } else {// TODO
+                }
+            }
+        }
+        if (strcmp(name, "read") == 0)
+            fprintf(g_output, "jal _read_int\n");
+        else if (strcmp(name, "fread") == 0)
+            fprintf(g_output, "jal _read_float\n");
+        else
+            fprintf(g_output, "jal _start_%s\n", name);
+        SymbolTableEntry *entry = idNode->semantic_value.identifierSemanticValue.symbolTableEntry;
+        assert(entry);
+        assert(entry->attribute->attributeKind == FUNCTION_SIGNATURE);
+        DATA_TYPE returnType = entry->attribute->attr.functionSignature->returnType;
+        if (returnType == INT_TYPE) {
+            reg = getIntReg();
+            fprintf(g_output, "mv x%d,a0\n", reg.i);
+        } else if (returnType == FLOAT_TYPE) {
+            reg = getFloatReg();
+            fprintf(g_output, "fmv.s f%d,fa0\n", reg.i);
+        } else {
+            assert(returnType == VOID_TYPE);
+            reg.i = -1;
+        }
     }
     for (int i = 0; i <= 7; ++i, offset += 8, pop(8))
-        fprintf(g_output, "ld a%d,%d(sp)\n", i, offset);
+        generateStoreLoadSP("ld", "a", i, offset);
     for (int i = 0; i <= 7; ++i, offset += 8, pop(8))
-        fprintf(g_output, "flw fa%d,%d(sp)\n", i, offset);
+        generateStoreLoadSP("flw", "fa", i, offset);
     return reg;
 }
 
@@ -885,6 +889,7 @@ void generateReturnStmt(AST_NODE *returnNode)
 
 void generateStmt(AST_NODE *stmtNode)
 {
+    Reg reg;
     switch (stmtNode->nodeType) {
     case NUL_NODE:
         return;
@@ -906,7 +911,9 @@ void generateStmt(AST_NODE *stmtNode)
             generateIfStmt(stmtNode);
             break;
         case FUNCTION_CALL_STMT:
-            generateFunctionCall(stmtNode);
+            reg = generateFunctionCall(stmtNode);
+            if (reg.i != -1)
+                freeReg(reg);
             break;
         case RETURN_STMT:
             generateReturnStmt(stmtNode);

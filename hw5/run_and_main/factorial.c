@@ -1,11 +1,14 @@
 int n;
 int fact() 
 {
+    int ret;
     if (n == 1) {
         return n;
     } else {
         n =n-1;
-        return (n*fact());
+        ret = n;
+        ret = ret * fact();
+        return ret;
     }
 }
 int MAIN()
