@@ -3,8 +3,9 @@ int a[10];
 
 int binary_search(int N,int x){
   int Left=0;
-  int Right=N-1;
+  int Right;
   int Mid;
+  Right=N-1;
   
   while(Left<=Right){
     Mid=(Left+Right)/2;

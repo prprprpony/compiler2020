@@ -1,20 +1,12 @@
 
 int a[10];
-int cnt;
 
 void quicksort(int Left,int Right){
-  int pivot=Left;
-  int i=Left,j=Right;
+  int pivot, i, j;
   int tmp;
-  write(cnt);
-  write(" ");
-  write(Left);
-  write(" ");
-  write(Right);
-  write("\n");
-  cnt = cnt + 1;
-  if (cnt >= 2)
-      return;
+  pivot = Left;
+  i = Left;
+  j = Right;
   if(Left>=Right){
     return;
   }

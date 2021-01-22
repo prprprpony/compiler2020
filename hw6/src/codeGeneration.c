@@ -801,7 +801,7 @@ Reg generateFunctionCall(AST_NODE *funcNode)
     for (int i = 0; i <= 7; ++i)
         generateStoreLoadSP("sd", "a", i, push(8));
     for (int i = 0; i <= 7; ++i)
-        generateStoreLoadSP("fsw", "fa", i, push(8));
+        generateStoreLoadSP("fsw", "fa", i, push(4));
     if (strcmp(name, "write") == 0) {
         generateWrite(idNode);
     } else {
@@ -815,7 +815,7 @@ Reg generateFunctionCall(AST_NODE *funcNode)
             if (p->type->properties.dataType == INT_TYPE) {
                 if (reg.type == FLOAT_TYPE)
                     reg = floatToInt(reg);
-                generateStoreLoadSP("sd", "x", reg.i, push(4));
+                generateStoreLoadSP("sw", "x", reg.i, push(4));
             } else { //TODO array
                 if (reg.type == INT_TYPE)
                     reg = intToFloat(reg);
@@ -827,7 +827,7 @@ Reg generateFunctionCall(AST_NODE *funcNode)
         for (int i = 0; i < fs.parametersCount; ++i, p = p->next, offset2 += 4, pop(4)) {
             if (p->type->properties.dataType == INT_TYPE) {
                 if (i <= 7) {
-                    generateStoreLoadSP("ld", "a", i, offset2);
+                    generateStoreLoadSP("lw", "a", i, offset2);
                 } else {// TODO
                 }
             } else { // TODO array
@@ -860,7 +860,7 @@ Reg generateFunctionCall(AST_NODE *funcNode)
     }
     for (int i = 0; i <= 7; ++i, offset += 8, pop(8))
         generateStoreLoadSP("ld", "a", i, offset);
-    for (int i = 0; i <= 7; ++i, offset += 8, pop(8))
+    for (int i = 0; i <= 7; ++i, offset += 4, pop(4))
         generateStoreLoadSP("flw", "fa", i, offset);
     return reg;
 }

@@ -4,9 +4,9 @@ int b[10];
 int c[10];
 
 void merge(int Left,int Mid,int Right){
-  int i,j,k;
-  int Len1=Mid-Left+1;
-  int Len2=Right-(Mid+1)+1;
+  int i,j,k, Len1, Len2;
+  Len1=Mid-Left+1;
+  Len2=Right-(Mid+1)+1;
   for(i=0;i<Len1;i=i+1){
     b[i]=a[Left+i];
   }
@@ -41,7 +41,8 @@ void merge(int Left,int Mid,int Right){
 }
 
 void mergesort(int Left,int Right){
-  int Mid=(Left+Right)/2;
+  int Mid;
+  Mid=(Left+Right)/2;
   if(Left>=Right){
     return;
   }
