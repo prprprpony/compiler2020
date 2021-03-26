@@ -1,0 +1,19 @@
+i apple
+i bee 
+f catmeowmeow
+f dog
+f elf
+apple = (1)
+bee = ((78 + 9))
+catmeowmeow = 3.14
+dog = 2.33333
+elf = (apple + bee) * (catmeowmeow - dog)
+
+p apple
+p bee
+p catmeowmeow
+p dog
+p elf
+
+elf = ((bee - apple - 1) / 2 - 3) * (catmeowmeow + dog)
+p elf

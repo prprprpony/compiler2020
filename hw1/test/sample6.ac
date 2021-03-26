@@ -1,0 +1,29 @@
+i a
+i b
+f c
+f d
+f e
+f g
+f h
+f j
+f k
+f l
+
+a = 3
+b = 5
+c = 0.1
+d = 2.5
+
+e = a + b * c + d
+g = a * b + c * d * a + b * c
+h = a * b / c / d
+j = a + b / c - b / d * a + c
+k = a / b / c
+l = c / b / a
+
+p e
+p g
+p h
+p j
+p k
+p l

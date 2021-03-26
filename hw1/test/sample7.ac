@@ -1,0 +1,12 @@
+i apple
+f fruit
+i iehwr
+i dE
+apple = 1
+fruit = 2.1
+iehwr = 1
+dE = 2
+iehwr = apple + dE
+p fruit
+p iehwr
+p dE

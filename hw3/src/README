@@ -1,0 +1,4 @@
+Array declaration can accept relational operator: int a[1 + 1 == 2];
+Array index can accept relational operator: write(a[1][2 + 2 == !5]);
+Sequence of unary operation is accepted: write(3 - -2);
+You can test all above with mytest.c
